@@ -43,6 +43,20 @@ void Server::run() {
         if (client_socket < 0) continue;
         
         cout << "New client connected!\n";
-        close(client_socket);
+
+        char buff[1024] = {};
+        int bytes_read = read(client_socket, buff, 1024);
+        
+        if (bytes_read > 0) {
+            cout << "Received " << bytes_read << " bytes.\n";
+            string input(buff, bytes_read);
+            
+            cout << "Raw packet:\n" << input << "\n";
+
+            string response = "+OK\r\n";
+            write(client_socket, response.c_str(), response.length());
+        }
+
+        close(client_socket); 
     }
 }
