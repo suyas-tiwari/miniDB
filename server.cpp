@@ -1,4 +1,5 @@
 #include "server.h"
+#include "resp_parser.h"
 #include <iostream>
 
 using namespace std;
@@ -42,17 +43,18 @@ void Server::run() {
         int client_socket = accept(server_fd, nullptr, nullptr);
         if (client_socket < 0) continue;
         
-        cout << "New client connected!\n";
-
         char buff[1024] = {};
         int bytes_read = read(client_socket, buff, 1024);
         
         if (bytes_read > 0) {
-            cout << "Received " << bytes_read << " bytes.\n";
             string input(buff, bytes_read);
             
-            cout << "Raw packet:\n" << input << "\n";
+            Command cmd = parseRESP(input);
+            
+            if (!cmd.name.empty()) cout << "Successfully Parsed Command: " << cmd.name << "\n";
+            else cout << "Received non-RESP data.\n";
 
+            // Just acknowledge receipt so the client doesn't hang
             string response = "+OK\r\n";
             write(client_socket, response.c_str(), response.length());
         }
