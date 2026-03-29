@@ -1,0 +1,8 @@
+# Compiled outputs
+*.o
+*.out
+redis_test
+minidb
+
+# OS generated files
+.DS_Store
