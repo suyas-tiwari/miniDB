@@ -56,6 +56,22 @@ void Server::run() {
                 string msg = cmd.args[0];
                 response = "$" + to_string(msg.length()) + "\r\n" + msg + "\r\n";
             }
+
+            else if (cmd.name == "SET" && cmd.args.size() >= 2) {
+                string key = cmd.args[0];
+                string val = cmd.args[1];
+                data[key] = val; // Store it in the map
+                response = "+OK\r\n";
+            }
+
+            else if (cmd.name == "GET" && !cmd.args.empty()) {
+                string key = cmd.args[0];
+                if (data.find(key) != data.end()) {
+                    string val = data[key];
+                    response = "$" + to_string(val.length()) + "\r\n" + val + "\r\n";
+                }
+                else response = "$-1\r\n";
+            }
             else if (!cmd.name.empty()) response = "-ERR unknown command '" + cmd.name + "'\r\n";
             else response = "-ERR invalid request\r\n";
 
