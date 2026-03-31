@@ -48,14 +48,17 @@ void Server::run() {
         
         if (bytes_read > 0) {
             string input(buff, bytes_read);
-            
             Command cmd = parseRESP(input);
-            
-            if (!cmd.name.empty()) cout << "Successfully Parsed Command: " << cmd.name << "\n";
-            else cout << "Received non-RESP data.\n";
+            string response = "";
 
-            // Just acknowledge receipt so the client doesn't hang
-            string response = "+OK\r\n";
+            if (cmd.name == "PING") response = "+PONG\r\n";
+            else if (cmd.name == "ECHO" && !cmd.args.empty()) {
+                string msg = cmd.args[0];
+                response = "$" + to_string(msg.length()) + "\r\n" + msg + "\r\n";
+            }
+            else if (!cmd.name.empty()) response = "-ERR unknown command '" + cmd.name + "'\r\n";
+            else response = "-ERR invalid request\r\n";
+
             write(client_socket, response.c_str(), response.length());
         }
 
