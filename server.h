@@ -4,12 +4,13 @@
 #include <unistd.h>
 #include <string>
 #include <unordered_map>
+#include "database.h"
 
 class Server {
 private:
     int port;
     int server_fd;
-    std::unordered_map<std::string, std::string> data;
+    Database db;
 
 public:
     Server(int p); 
