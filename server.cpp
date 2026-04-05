@@ -40,29 +40,35 @@ void Server::run() {
     cout << "Waiting for connections on port " << port << "...\n";
     
     while(true) {
+        // Waiting for a new client
         int client_socket = accept(server_fd, nullptr, nullptr);
         if (client_socket < 0) continue;
         
-        char buff[1024] = {};
-        int bytes_read = read(client_socket, buff, 1024);
-        
-        if (bytes_read > 0) {
+        cout << "New client connected!\n";
+
+        while (true) {
+            char buff[1024] = {};
+            int bytes_read = read(client_socket, buff, 1024);
+            
+            // If the client types 'exit' or the connection drops
+            if (bytes_read <= 0) {
+                cout << "Client disconnected.\n";
+                break; // Break the inner loop, move to close()
+            }
+            
             string input(buff, bytes_read);
             Command cmd = parseRESP(input);
             string response = "";
 
             if (cmd.name == "PING") response = "+PONG\r\n";
-
             else if (cmd.name == "ECHO" && !cmd.args.empty()) {
                 string msg = cmd.args[0];
                 response = "$" + to_string(msg.length()) + "\r\n" + msg + "\r\n";
             }
-            
             else if (cmd.name == "SET" && cmd.args.size() >= 2) {
                 db.set(cmd.args[0], cmd.args[1]);
                 response = "+OK\r\n";
             }
-
             else if (cmd.name == "GET" && !cmd.args.empty()) {
                 string key = cmd.args[0];
                 if (db.exists(key)) {
@@ -79,6 +85,7 @@ void Server::run() {
             write(client_socket, response.c_str(), response.length());
         }
 
+        // Close the connection only if the other side closes.
         close(client_socket); 
     }
 }
