@@ -5,6 +5,75 @@
 
 using namespace std;
 
+void Database::set(const string& key, const string& value){
+    store[key]=value;
+    if(aof_writer.is_open()){
+        aof_writer << "*3\r\n"
+                      << "$3\r\nSET\r\n"
+                      << "$" << key.length() << "\r\n" << key << "\r\n"
+                      << "$" << value.length() << "\r\n" << value << "\r\n";
+        aof_writer.flush();
+    }
+}
+
+bool Database::del(const string& key){
+    if(store.find(key)!=store.end()){
+        store.erase(key);
+        aof_writer << "*2\r\n"
+                    << "$3\r\nDEL\r\n"
+                    <<"$"<<key.length()<<"\r\n"<<key<<"\r\n";
+        aof_writer.flush();
+        return true;
+    }
+    else return false;
+}
+
+bool Database::rename(const std::string& key, const std:: string& newKey){
+    if(store.find(key)!=store.end()){
+        store[newKey]=store[key];
+        store.erase(key);
+        aof_writer << "*3\r\n"
+                    << "$6\r\nRENAME\r\n"
+                    <<"$"<<key.length()<<"\r\n"<<key<<"\r\n"
+                    <<"$"<<newKey.length()<<"\r\n"<<newKey<<"\r\n";
+        aof_writer.flush();
+        return true;
+    }
+    else return false;
+}
+
+string Database::incr(const std::string& key){
+    string result_val;
+    if(store.find(key) != store.end()){
+        try{
+            size_t char_processed=0;
+            long long num = stoll(store[key], &char_processed); 
+            if (char_processed != store[key].length()) {
+                return "ERR"; 
+            }
+            else{
+                num += 1;
+                result_val = to_string(num);
+                store[key] = result_val;
+            }
+        }
+        catch(...){
+            return "ERR";
+        }
+    }
+    else{
+        result_val = "1";
+        store[key] = result_val;
+    }
+    if(aof_writer.is_open()){
+        aof_writer << "*2\r\n"
+                   << "$4\r\nINCR\r\n"
+                   << "$" << key.length() << "\r\n" << key << "\r\n";
+        aof_writer.flush();
+    }
+    return result_val;
+}
+
 Database::Database() {
     aof_reader.open("data.aof");
     
@@ -40,7 +109,21 @@ Database::Database() {
         if (c.name == "SET" && c.args.size() >= 2) {
             store[c.args[0]]=c.args[1];
         }
+        else if (c.name == "DEL" && !c.args.empty()){
+            string key = c.args[0];
+            if(store.find(key)!=store.end()){
+                store.erase(key);
+            }
+        }
+        else if (c.name == "RENAME" && c.args.size()>=2){
+            store[c.args[1]]=store[c.args[0]];
+            store.erase(c.args[0]);
+        }
+        else if (c.name == "INCR" && !c.args.empty()){
+            incr(c.args[0]);
+        }
     }
+
 
     aof_reader.close();
 
@@ -58,18 +141,9 @@ Database::~Database() {
     }
 }
 
-void Database::set(const string& key, const string& value){
-    store[key]=value;
-    if(aof_writer.is_open()){
-        aof_writer << "*3\r\n"
-                      << "$3\r\nSET\r\n"
-                      << "$" << key.length() << "\r\n" << key << "\r\n"
-                      << "$" << value.length() << "\r\n" << value << "\r\n";
-        aof_writer.flush();
-    }
-}
 
-std::string Database::get(const string& key){
+
+string Database::get(const string& key){
     if(store.find(key)!=store.end()) return store[key];
     return "";
 }

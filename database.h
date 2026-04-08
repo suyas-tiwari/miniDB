@@ -13,6 +13,9 @@ class Database {
         Database();
         ~Database();
         void set(const std::string& key, const std::string& value);
+        bool del(const std::string& key);
+        bool rename(const std::string& key, const std:: string& newKey);
+        std::string incr(const std::string& key);
         std::string get(const std::string& key);
         bool exists(const std::string& key);
 };

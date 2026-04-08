@@ -97,6 +97,28 @@ void Server::run() {
                     }
                     else response = "$-1\r\n";
                 }
+                else if (cmd.name == "EXISTS" && !cmd.args.empty()){
+                    string key = cmd.args[0];
+                    if(db.exists(key)) response = ":1\r\n";
+                    else response = ":0\r\n";
+                }
+
+                else if (cmd.name == "DEL" && !cmd.args.empty()){
+                    string key = cmd.args[0];
+                    if(db.del(key)) response = ":1\r\n";
+                    else response = ":0\r\n";
+                }
+
+                else if (cmd.name == "RENAME" && cmd.args.size()>=2){
+                    if(db.rename(cmd.args[0],cmd.args[1])) response = "+OK\r\n";
+                    else response = "-ERR no such key\r\n";
+                }
+
+                else if (cmd.name == "INCR" && !cmd.args.empty()){
+                    string result = db.incr(cmd.args[0]);
+                    if(result == "ERR") response = "-ERR value is not an integer or out of range\r\n";
+                    else response = ":" + result + "\r\n";
+                }
 
                 else if (!cmd.name.empty()) response = "-ERR unknown command '" + cmd.name + "'\r\n";
             
