@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string>
 #include <unordered_map>
+#include <sys/epoll.h>
 #include "database.h"
 
 class Server {

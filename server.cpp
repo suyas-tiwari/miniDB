@@ -4,6 +4,8 @@
 
 using namespace std;
 
+constexpr int MAX_EVENTS=64;
+
 Server::Server(int p) {
     port = p;
     server_fd = -1;
@@ -37,55 +39,72 @@ bool Server::start() {
 }
 
 void Server::run() {
+    int epoll_fd = epoll_create1(0);
+    if(epoll_fd<0){
+        cout<<"There is some error in the program\n";
+        return;
+    }
+
+    struct epoll_event ev,events[MAX_EVENTS];
+    ev.data.fd=server_fd;
+    ev.events=EPOLLIN;
+
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &ev);
+
     cout << "Waiting for connections on port " << port << "...\n";
     
     while(true) {
         // Waiting for a new client
-        int client_socket = accept(server_fd, nullptr, nullptr);
-        if (client_socket < 0) continue;
-        
-        cout << "New client connected!\n";
+        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
 
-        while (true) {
-            char buff[1024] = {};
-            int bytes_read = read(client_socket, buff, 1024);
-            
-            // If the client types 'exit' or the connection drops
-            if (bytes_read <= 0) {
-                cout << "Client disconnected.\n";
-                break; // Break the inner loop, move to close()
+        for(int i=0;i<nfds;i++){
+            if (events[i].data.fd == server_fd) {
+                int client_socket = accept(server_fd, nullptr, nullptr);
+                ev.events = EPOLLIN;
+                ev.data.fd = client_socket;
+                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_socket, &ev);
+                cout << "New client connected on socket " << client_socket << "\n";
             }
             
-            string input(buff, bytes_read);
-            Command cmd = parseRESP(input);
-            string response = "";
-
-            if (cmd.name == "PING") response = "+PONG\r\n";
-            else if (cmd.name == "ECHO" && !cmd.args.empty()) {
-                string msg = cmd.args[0];
-                response = "$" + to_string(msg.length()) + "\r\n" + msg + "\r\n";
-            }
-            else if (cmd.name == "SET" && cmd.args.size() >= 2) {
-                db.set(cmd.args[0], cmd.args[1]);
-                response = "+OK\r\n";
-            }
-            else if (cmd.name == "GET" && !cmd.args.empty()) {
-                string key = cmd.args[0];
-                if (db.exists(key)) {
-                    string val = db.get(key);
-                    response = "$" + to_string(val.length()) + "\r\n" + val + "\r\n";
+            else{
+                int client_fd = events[i].data.fd;
+                char buff[1024] = {};
+                int bytes_read = read(client_fd, buff, 1024);
+                if (bytes_read <= 0) {
+                    cout << "Client disconnected.\n";
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr);
+                    close(client_fd);
                 }
-                else response = "$-1\r\n";
-            }
+                else{
+                    string input(buff, bytes_read);
+                    Command cmd = parseRESP(input);
+                string response = "";
 
-            else if (!cmd.name.empty()) response = "-ERR unknown command '" + cmd.name + "'\r\n";
+                if (cmd.name == "PING") response = "+PONG\r\n";
+                else if (cmd.name == "ECHO" && !cmd.args.empty()) {
+                    string msg = cmd.args[0];
+                    response = "$" + to_string(msg.length()) + "\r\n" + msg + "\r\n";
+                }
+                else if (cmd.name == "SET" && cmd.args.size() >= 2) {
+                    db.set(cmd.args[0], cmd.args[1]);
+                    response = "+OK\r\n";
+                }
+                else if (cmd.name == "GET" && !cmd.args.empty()) {
+                    string key = cmd.args[0];
+                    if (db.exists(key)) {
+                        string val = db.get(key);
+                        response = "$" + to_string(val.length()) + "\r\n" + val + "\r\n";
+                    }
+                    else response = "$-1\r\n";
+                }
+
+                else if (!cmd.name.empty()) response = "-ERR unknown command '" + cmd.name + "'\r\n";
             
-            else response = "-ERR invalid request\r\n";
+                else response = "-ERR invalid request\r\n";
 
-            write(client_socket, response.c_str(), response.length());
+                write(client_fd, response.c_str(), response.length());
+                }
+            }
         }
-
-        // Close the connection only if the other side closes.
-        close(client_socket); 
     }
 }
