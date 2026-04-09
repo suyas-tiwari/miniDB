@@ -1,40 +1,61 @@
-# MiniDB 🚀
+# MiniDB
 
-A lightweight, high-performance, single-threaded Key-Value store written entirely in C++ using POSIX sockets and the official Redis Serialization Protocol (RESP).
+A Redis-compatible, persistent key-value store written in C++ from scratch.
+Built to understand how databases, network protocols, and I/O systems actually
+work under the hood — no networking libraries, no shortcuts.
 
-## 🧠 Architecture Overview
+Connects directly with `redis-cli` out of the box.
 
-MiniDB was built to deeply understand network programming, protocol parsing, and in-memory data management. It bypasses high-level networking libraries in favor of raw system calls to build a database from the ground up.
+## Architecture
 
-- **Networking Layer:** Custom TCP server using POSIX sockets (`<sys/socket.h>`), featuring a persistent event-loop to handle long-lived client connections without dropping sockets.
-- **Protocol Parser:** Engineered a custom serialization parser strictly adhering to the Redis Serialization Protocol (RESP). It is robust enough to handle byte-level parsing, trailing buffer garbage, and precise string-to-integer extraction.
-- **Storage Engine:** Decoupled, Object-Oriented storage layer utilizing standard library hash maps (`std::unordered_map`) for constant O(1) time complexity reads and writes.
+**Networking — epoll-based I/O multiplexing**
+A single thread manages multiple concurrent client connections using Linux's
+`epoll` API. Each client gets a persistent socket that stays open across
+commands, mimicking how real Redis handles connections.
 
-## ⚡ Supported Commands
+**Protocol — custom RESP parser**
+Implements the Redis Serialization Protocol (RESP) from scratch at the byte
+level. Parses incoming bulk string arrays by scanning for `\r\n` delimiters
+and extracting exact byte lengths — no regex, no string splitting.
 
-MiniDB seamlessly integrates with the official `redis-cli`, proving its protocol compliance.
+**Persistence — Append Only File (AOF)**
+Every write command is serialized back into RESP format and appended to
+`data.aof`. On startup, the file is replayed line by line to reconstruct the
+in-memory state, exactly how Redis AOF persistence works internally.
 
-| Command | Time Complexity | Description                     | Example                           |
-| :------ | :-------------- | :------------------------------ | :-------------------------------- |
-| `PING`  | O(1)            | Tests the active TCP connection | `PING` ➡️ `+PONG`                 |
-| `ECHO`  | O(1)            | Returns the provided string     | `ECHO hello` ➡️ `$5\r\nhello\r\n` |
-| `SET`   | O(1)            | Stores a string value via a key | `SET user suyas` ➡️ `+OK`         |
-| `GET`   | O(1)            | Retrieves a string value by key | `GET user` ➡️ `$5\r\nsuyas\r\n`   |
+**Storage — O(1) in-memory store**
+`std::unordered_map` backed key-value store, fully decoupled from the network
+layer behind a clean Database class interface.
 
-## 🛠️ How to Build and Run
+## Supported Commands
 
-**1. Compile the Engine**
-`g++ main.cpp resp_parser.cpp server.cpp database.cpp -o minidb`
+| Command                 | Description                            |
+| :---------------------- | :------------------------------------- |
+| `PING`                  | Returns PONG, tests the connection     |
+| `ECHO <msg>`            | Returns the message back               |
+| `SET <key> <value>`     | Stores a key-value pair                |
+| `GET <key>`             | Retrieves value by key                 |
+| `EXISTS <key>`          | Returns 1 if key exists, 0 otherwise   |
+| `DEL <key>`             | Deletes a key, returns 1 on success    |
+| `RENAME <key> <newkey>` | Renames a key                          |
+| `INCR <key>`            | Atomically increments an integer value |
 
-**2. Start the Server**
-`./minidb`
+## Build & Run
 
-**3. Connect as a Client**
-Open a new terminal and use the official Redis CLI to interface with the database:
-`redis-cli -p 6739`
+```bash
+g++ main.cpp resp_parser.cpp server.cpp database.cpp -o minidb
+./minidb
+```
 
-## 💡 Technical Challenges & Learnings
+Connect using redis-cli:
 
-- **Memory & State Management:** Successfully refactored a monolithic server loop into a clean OOP architecture, safely isolating the network handler from the private database engine.
-- **Protocol Quirks (RESP):** Navigated the complexities of byte-level parsing, specifically handling implicit carriage returns (`\r\n`) and avoiding out-of-bounds memory errors during extraction.
-- **Connection Persistence:** Evolved the server from an ephemeral request/response model to a persistent daemon capable of handling sustained client sessions, overcoming the limitations of standard blocking reads.
+```bash
+redis-cli -p 6739
+```
+
+## What's next
+
+- Async write queue — decouple disk writes from the main event loop so SSD
+  latency doesn't block command processing
+- Idle connection cleanup — close sockets inactive for over 5 minutes to
+  prevent file descriptor exhaustion
