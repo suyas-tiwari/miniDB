@@ -18,4 +18,5 @@ class Database {
         std::string incr(const std::string& key);
         std::string get(const std::string& key);
         bool exists(const std::string& key);
+        int size();
 };

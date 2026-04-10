@@ -151,3 +151,7 @@ string Database::get(const string& key){
 bool Database::exists(const string& key){
     return store.find(key) != store.end();
 }
+
+int Database::size(){
+    return store.size();
+}

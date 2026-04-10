@@ -121,6 +121,8 @@ void Server::run() {
                 }
 
                 else if (!cmd.name.empty()) response = "-ERR unknown command '" + cmd.name + "'\r\n";
+
+                else if (cmd.name == "DBSIZE") response = ":" + to_string(db.size()) + "\r\n";
             
                 else response = "-ERR invalid request\r\n";
 
