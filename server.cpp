@@ -63,7 +63,7 @@ void Server::run() {
                 ev.events = EPOLLIN;
                 ev.data.fd = client_socket;
                 epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_socket, &ev);
-                cout << "New client connected on socket " << client_socket << "\n";
+                // cout << "New client connected on socket " << client_socket << "\n";
             }
             
             else{
@@ -71,7 +71,7 @@ void Server::run() {
                 char buff[1024] = {};
                 int bytes_read = read(client_fd, buff, 1024);
                 if (bytes_read <= 0) {
-                    cout << "Client disconnected.\n";
+                    // cout << "Client disconnected.\n";
                     epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, nullptr);
                     close(client_fd);
                 }

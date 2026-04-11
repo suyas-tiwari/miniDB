@@ -5,24 +5,41 @@
 
 using namespace std;
 
+
+
+void Database::write_to_disk(){
+    while(running){
+        this_thread::sleep_for(chrono::seconds(1));
+        string local_buffer;
+        {
+        lock_guard<mutex> lock(buffer_lock);
+        swap(local_buffer, write_buffer);
+        }
+        if(!local_buffer.empty()) {
+            aof_writer << local_buffer;
+            aof_writer.flush();
+        }
+    }
+    
+}
+
 void Database::set(const string& key, const string& value){
     store[key]=value;
-    if(aof_writer.is_open()){
-        aof_writer << "*3\r\n"
-                      << "$3\r\nSET\r\n"
-                      << "$" << key.length() << "\r\n" << key << "\r\n"
-                      << "$" << value.length() << "\r\n" << value << "\r\n";
-        aof_writer.flush();
-    }
+    
+        string resp = "*3\r\n$3\r\nSET\r\n$" + to_string(key.length()) + 
+                  "\r\n" + key + "\r\n$" + to_string(value.length()) + 
+                  "\r\n" + value + "\r\n";
+        lock_guard<mutex> lock(buffer_lock);    //Automatically opens the lock on going out of
+        write_buffer+=resp;
 }
 
 bool Database::del(const string& key){
     if(store.find(key)!=store.end()){
         store.erase(key);
-        aof_writer << "*2\r\n"
-                    << "$3\r\nDEL\r\n"
-                    <<"$"<<key.length()<<"\r\n"<<key<<"\r\n";
-        aof_writer.flush();
+        string resp = "*2\r\n$3\r\nDEL\r\n$"+to_string(key.length()) +
+        "\r\n" + key + "\r\n";
+        lock_guard<mutex> lock(buffer_lock);
+        write_buffer+=resp;
         return true;
     }
     else return false;
@@ -32,11 +49,11 @@ bool Database::rename(const std::string& key, const std:: string& newKey){
     if(store.find(key)!=store.end()){
         store[newKey]=store[key];
         store.erase(key);
-        aof_writer << "*3\r\n"
-                    << "$6\r\nRENAME\r\n"
-                    <<"$"<<key.length()<<"\r\n"<<key<<"\r\n"
-                    <<"$"<<newKey.length()<<"\r\n"<<newKey<<"\r\n";
-        aof_writer.flush();
+        string resp = "*3\r\n$6\r\nRENAME\r\n$" + to_string(key.length()) + 
+        "\r\n" + key + "\r\n$"+ to_string(newKey.length()) + 
+        "\r\n" + newKey + "\r\n";
+        lock_guard<mutex> lock(buffer_lock);
+        write_buffer+=resp;
         return true;
     }
     else return false;
@@ -65,16 +82,17 @@ string Database::incr(const std::string& key){
         result_val = "1";
         store[key] = result_val;
     }
-    if(aof_writer.is_open()){
-        aof_writer << "*2\r\n"
-                   << "$4\r\nINCR\r\n"
-                   << "$" << key.length() << "\r\n" << key << "\r\n";
-        aof_writer.flush();
-    }
+    string resp = "*2\r\n$4\r\nINCR\r\n$" + to_string(key.length()) + 
+                  "\r\n" + key + "\r\n";
+    lock_guard<mutex> lock(buffer_lock);
+    write_buffer += resp;
+    
     return result_val;
 }
 
 Database::Database() {
+    running=true;
+
     aof_reader.open("data.aof");
     
     if (!aof_reader.is_open()) {
@@ -132,9 +150,19 @@ Database::Database() {
     if (!aof_writer.is_open()) {
         cerr << "Fatal Error: Could not open AOF file to disk!\n";
     }
+
+    writer_thread = thread(&Database::write_to_disk,this);
 }
 
 Database::~Database() {
+    running = false;
+    writer_thread.join();   //Waits for the process to finish instead of stopping immediately like detach
+
+    if(!write_buffer.empty()){
+        aof_writer<<write_buffer;
+        aof_writer.flush();
+    }
+
     if (aof_writer.is_open()) {
         aof_writer.close();
         cout << "Database safely flushed and disconnected from disk.\n";

@@ -2,6 +2,9 @@
 #include <string>
 #include <unordered_map>
 #include <fstream>
+#include <mutex>
+#include <chrono>
+#include <thread>
 #include "resp_parser.h"
 
 class Database {
@@ -9,6 +12,12 @@ class Database {
         std::unordered_map<std::string, std::string> store;
         std::ofstream aof_writer;
         std::ifstream aof_reader;
+        std::mutex buffer_lock;
+        std::string write_buffer;
+        std::thread writer_thread;
+        bool running;
+        void write_to_disk();
+        
     public:
         Database();
         ~Database();
