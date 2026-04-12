@@ -5,7 +5,44 @@
 
 using namespace std;
 
+void Database::check_and_compact(){
+    pid_t pid = fork();
+    if(pid==0){
+        ofstream compact("data.aof.compact");
+        for(auto& i : store){
+            string resp = "*3\r\n$3\r\nSET\r\n$" + to_string(i.first.length()) + 
+                  "\r\n" + i.first + "\r\n$" + to_string(i.second.length()) + 
+                  "\r\n" + i.second + "\r\n";
+            compact<<resp;
+        }
+        compact.close();
+        exit(0);
+    }
+    else if(pid>0){
+        waitpid(pid,nullptr,0);
+        string backlog_buffer;
+        {
+            lock_guard<mutex> lock(buffer_lock);
+            swap(backlog_buffer, write_buffer);
+        }
+        ofstream compact("data.aof.compact", ios::app);
+        compact << backlog_buffer;
+        compact.close();
+        ::rename("data.aof.compact", "data.aof");
+        aof_writer.close();
+        aof_writer.open("data.aof", ios::app);
+    }
+    else{
+        cerr << "Fork failed, compaction aborted.\n";
+        return;
+    }
+}
 
+int Database::get_aof_size(){
+    aof_writer.flush();
+    ifstream f("data.aof", ios::ate | ios::binary);     //open the file in binary so that it doesn't count \r\n as \n or similar things and open ate means at end which opens the file from the end
+    return f.tellg();   //stands for tell get position which basically returns the position where the cursor is at.
+}
 
 void Database::write_to_disk(){
     while(running){
@@ -18,19 +55,23 @@ void Database::write_to_disk(){
         if(!local_buffer.empty()) {
             aof_writer << local_buffer;
             aof_writer.flush();
+            int size = get_aof_size();
+            if(size > COMPACTION_THRESHOLD && size > size_after_last_compaction * 2) {
+                check_and_compact();
+                size_after_last_compaction = get_aof_size();
+            }
         }
-    }
-    
+    } 
 }
 
 void Database::set(const string& key, const string& value){
     store[key]=value;
     
-        string resp = "*3\r\n$3\r\nSET\r\n$" + to_string(key.length()) + 
-                  "\r\n" + key + "\r\n$" + to_string(value.length()) + 
-                  "\r\n" + value + "\r\n";
-        lock_guard<mutex> lock(buffer_lock);    //Automatically opens the lock on going out of
-        write_buffer+=resp;
+    string resp = "*3\r\n$3\r\nSET\r\n$" + to_string(key.length()) + 
+              "\r\n" + key + "\r\n$" + to_string(value.length()) + 
+              "\r\n" + value + "\r\n";
+    lock_guard<mutex> lock(buffer_lock);    //Automatically opens the lock on going out of
+    write_buffer += resp;
 }
 
 bool Database::del(const string& key){
@@ -39,7 +80,7 @@ bool Database::del(const string& key){
         string resp = "*2\r\n$3\r\nDEL\r\n$"+to_string(key.length()) +
         "\r\n" + key + "\r\n";
         lock_guard<mutex> lock(buffer_lock);
-        write_buffer+=resp;
+        write_buffer += resp;
         return true;
     }
     else return false;
@@ -53,7 +94,7 @@ bool Database::rename(const std::string& key, const std:: string& newKey){
         "\r\n" + key + "\r\n$"+ to_string(newKey.length()) + 
         "\r\n" + newKey + "\r\n";
         lock_guard<mutex> lock(buffer_lock);
-        write_buffer+=resp;
+        write_buffer += resp;
         return true;
     }
     else return false;
@@ -138,7 +179,17 @@ Database::Database() {
             store.erase(c.args[0]);
         }
         else if (c.name == "INCR" && !c.args.empty()){
-            incr(c.args[0]);
+            string key = c.args[0];
+            if(store.find(key) != store.end()){
+                try {
+                     size_t char_processed = 0;
+                    long long num = stoll(store[key], &char_processed); 
+                    if (char_processed == store[key].length()) {
+                        store[key] = to_string(num + 1);
+                    }
+                   } catch(...) { /* Ignore invalid values during boot */ }
+            }
+            else store[key] = "1";
         }
     }
 

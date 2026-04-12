@@ -5,6 +5,8 @@
 #include <mutex>
 #include <chrono>
 #include <thread>
+#include <unistd.h>
+#include <sys/wait.h>
 #include "resp_parser.h"
 
 class Database {
@@ -17,7 +19,11 @@ class Database {
         std::thread writer_thread;
         bool running;
         void write_to_disk();
-        
+        static const int COMPACTION_THRESHOLD = 1 * 1024;
+        void check_and_compact();
+        int get_aof_size();
+        int size_after_last_compaction = 0;
+
     public:
         Database();
         ~Database();

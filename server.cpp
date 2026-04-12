@@ -126,7 +126,9 @@ void Server::run() {
             
                 else response = "-ERR invalid request\r\n";
 
-                write(client_fd, response.c_str(), response.length());
+                ssize_t bytes_written = write(client_fd, response.c_str(), response.length());
+                if (bytes_written < 0) cerr << "Error writing to socket " << client_fd << "\n";
+                else if (bytes_written < response.length()) cerr << "Warning: Partial write on socket " << client_fd << "\n";
                 }
             }
         }
